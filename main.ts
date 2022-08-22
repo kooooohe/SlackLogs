@@ -1,6 +1,4 @@
 // TODO セル数をカウントして、シートを増やす sheet_name_${num}的な感じで
-// 定期的にmessagesを保存する 取得Countを設定する
-// thread内の大量データも考える必要がある
 type Message = {
 	type: string
 	user: string
@@ -20,7 +18,8 @@ type File = {
 }
 
 
-function Run() {
+
+const Run = () => {
 	const TS_COlUMN = 7
 
 	const header = [
@@ -34,7 +33,6 @@ function Run() {
 	]
 
 	const FOLDER_NAME = "SlackLogs";
-	// const SpreadSheetName = "Slack_Log_SS";
 
 	const folderID = PropertiesService.getScriptProperties().getProperty('FOLDER_ID');
 	if (!folderID) {
@@ -243,7 +241,12 @@ class SpreadSheetHandler {
 class SlackApp {
 	private token: string = '';
 	private baseURL = "https://slack.com/api/";
-	// private baseURL = "https://slack.com/api/" + path + "?";
+	// "https://slack.com/api/" + path + "?";
+	private REQUEST_MESSAGE_LIMIT = 5
+	private REQUEST_THREAD_LIMIT = 5
+	private messageRequesstCount = 0
+	private threadRequesstCount = 0
+
 	constructor (token:string) {
 		this.token = token;
 	}
@@ -297,16 +300,15 @@ class SlackApp {
 	};
 
 	public Messages(channelID:string, oldest:string = '') {
-
 		let options = new Map<string, string>()
 		options['channel'] = channelID
 		options['oldest'] = oldest
 		let hasNext = true
 
 		let ms: Message[] = []
-		while (hasNext) {
+		while (hasNext && this.canMessageRequest()) {
 			const data = this.messages(options)
-		console.log(data)
+			console.log(data)
 			const mstmp:Message[] = data.messages
 			hasNext = !!data.has_more
 			if (mstmp && mstmp.length > 0){
@@ -329,8 +331,28 @@ class SlackApp {
 		console.log(nMs)
 		// let ms: Message[] = data.messages
 
-
 		return nMs.reverse()
+	}
+
+	private canMessageRequest():boolean {
+		this.messageRequesstCount++;
+		const r = this.messageRequesstCount < this.REQUEST_MESSAGE_LIMIT 
+
+		if (!r) {
+			this.messageRequesstCount = 0
+		}
+
+		return r
+	}
+
+	private canThtradRequest():boolean {
+		this.threadRequesstCount++;
+		const r = this.threadRequesstCount < this.REQUEST_THREAD_LIMIT 
+
+		if (!r) {
+			this.threadRequesstCount = 0
+		}
+		return r
 	}
 
 	private messages(options:Map<string, string>) {
@@ -349,7 +371,7 @@ class SlackApp {
 			console.log(channelID)
 
 		let ms: Message[] = []
-		while (hasNext) {
+		while (hasNext && this.canThtradRequest()) {
 			const data = this.request('conversations.replies', options)
 			const mstmp:Message[] = data.messages
 			console.log('get thred func2')
