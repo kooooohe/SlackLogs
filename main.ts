@@ -51,6 +51,14 @@ const Run = () => {
 		rootFolder = rootFolder.createFolder(FOLDER_NAME).setName(FOLDER_NAME)
 	}
 
+	const imfitr = rootFolder.getFoldersByName('img'); 
+	let imgFolder:GoogleAppsScript.Drive.Folder
+	if (imfitr.hasNext()) {
+		imgFolder = imfitr.next()
+	} else {
+		imgFolder = rootFolder.createFolder('img').setName('img')
+	}
+
 
 	const slack = new SlackApp(token)
 	const members = slack.Members()
@@ -104,13 +112,13 @@ const Run = () => {
 		let ms = slack.Messages(c.id, lastTs)
 
 
-		const foit = rootFolder.getFoldersByName(c.name)
+		const foit = imgFolder.getFoldersByName(c.name)
 		// for Download
 		let tFolder:GoogleAppsScript.Drive.Folder 
 		if (foit.hasNext()) {
 			tFolder = foit.next()
 		} else {
-			tFolder = rootFolder.createFolder(c.name)
+			tFolder = imgFolder.createFolder(c.name)
 		}
 
 		ms = downloadFiles(ms,slack,tFolder)
