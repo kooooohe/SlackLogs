@@ -27,7 +27,7 @@ users:read
 ```
 
 ## Set Goole App Script Propaties
-FOLDER_ID=XXXXX // Your own Folder
+FOLDER_ID=XXXXX // Your own Folder  
 SLACK_TOKEN=XXXXX
 
 ## Deploy
