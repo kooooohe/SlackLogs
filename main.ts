@@ -17,7 +17,7 @@ type File = {
 	url_private_download: string
 }
 
-
+const MAX_ROW = 7000
 
 const Run = () => {
 	const TS_COlUMN = 7
@@ -32,7 +32,7 @@ const Run = () => {
 	/*7*/	'ts' 
 	]
 
-	const FOLDER_NAME = "SlackLogs";
+	const FOLDER_NAME = "SlackLog";
 
 	const folderID = PropertiesService.getScriptProperties().getProperty('FOLDER_ID');
 	if (!folderID) {
@@ -42,13 +42,13 @@ const Run = () => {
 	if (!token) {
 		throw 'no set slack token';
 	}
-	let folder = DriveApp.getFolderById(folderID)
+	let rootFolder = DriveApp.getFolderById(folderID)
 
-	const fitr = folder.getFoldersByName(FOLDER_NAME);
+	const fitr = rootFolder.getFoldersByName(FOLDER_NAME);
 	if (fitr.hasNext()) {
-		folder =  fitr.next();
+		rootFolder =  fitr.next();
 	} else {
-		folder = folder.createFolder(FOLDER_NAME).setName(FOLDER_NAME)
+		rootFolder = rootFolder.createFolder(FOLDER_NAME).setName(FOLDER_NAME)
 	}
 
 
@@ -60,47 +60,57 @@ const Run = () => {
 
 
 
-	// make all sheet by names
-	// TODO: make spread sheet for each
-	let ts:GoogleAppsScript.Spreadsheet.Spreadsheet
 
 	// TODO: heavy at firsttime
 	console.time('a')
 
 	for (let c of cs) {
-		const fit = folder.getFilesByName(c.name)
+		let ts:GoogleAppsScript.Spreadsheet.Spreadsheet
+		const fit = rootFolder.getFilesByName(c.name)
 		if (fit.hasNext()) {
 			const f = fit.next()
 			ts = SpreadsheetApp.open(f)
 
 		} else {
 			ts = SpreadsheetApp.create(c.name);
-			folder.addFile(DriveApp.getFileById(ts.getId()));
+			rootFolder.addFile(DriveApp.getFileById(ts.getId()));
 			// join channels if there is no sheet with the channel's name
 			slack.Join(c.id)
 			console.log("create")
 		}
 
-		if (ts.getSheetByName(c.name) === null) {
-			 ts.insertSheet(c.name)
+		let ss2 = new SpreadSheetHandler(ts, c.name)
+
+		if (ss2.IsOverMaxRow()) {
+			const d = new Date()
+			const y = d.getFullYear();
+			const m = ('00' + (d.getMonth()+1)).slice(-2);
+			const da = ('00' + d.getDate()).slice(-2);
+			const r =  (y + '_' + m + '_' + da);
+			ss2.Utlity().rename(ss2.sheetName+'_'+r)
+
+			ts = SpreadsheetApp.create(c.name);
+			rootFolder.addFile(DriveApp.getFileById(ts.getId()));
+
+			ss2 = new SpreadSheetHandler(ts, c.name)
 		}
 
 
-		const ss2 = new SpreadSheetHandler(ts)
+		//ss2.Utlity().rename()
 
-		const lastTs = ss2.LastRowCell(c.name, TS_COlUMN)
+		const lastTs = ss2.LastRowCell(TS_COlUMN)
 		const isFirst = lastTs === ''
 
 		let ms = slack.Messages(c.id, lastTs)
 
 
-		const foit = folder.getFoldersByName(c.name)
+		const foit = rootFolder.getFoldersByName(c.name)
 		// for Download
 		let tFolder:GoogleAppsScript.Drive.Folder 
 		if (foit.hasNext()) {
 			tFolder = foit.next()
 		} else {
-			tFolder = folder.createFolder(c.name)
+			tFolder = rootFolder.createFolder(c.name)
 		}
 
 		ms = downloadFiles(ms,slack,tFolder)
@@ -115,7 +125,7 @@ const Run = () => {
 		}
 
 		console.log(c)
-		ss2.SetValues(c.name, svs)
+		ss2.SetValues(svs)
 	}
 	console.timeEnd('a')
 }
@@ -189,13 +199,25 @@ const formatToTwoDimentions = (ms: Message[], members: object): string[][] => {
 }
 
 
+class FolderHandler {
+	private f: GoogleAppsScript.Drive.Folder
+
+	constructor(f: GoogleAppsScript.Drive.Folder) {
+		this.f = f
+	}
+}
 
 class SpreadSheetHandler {
 	private ss: GoogleAppsScript.Spreadsheet.Spreadsheet
+	public sheetName: string
 
 	 // constructor(folder:GoogleAppsScript.Drive.Folder, fileName:string) {
-	 constructor(s: GoogleAppsScript.Spreadsheet.Spreadsheet) {
+	 constructor(s: GoogleAppsScript.Spreadsheet.Spreadsheet, sheetName: string) {
 		 this.ss = s
+		 this.sheetName = sheetName
+		if (this.ss.getSheetByName(this.sheetName) === null) {
+			 this.ss.insertSheet(this.sheetName)
+		}
 		
 		 // TODO: delete check
 		// const it = folder.getFilesByName(fileName);
@@ -210,12 +232,12 @@ class SpreadSheetHandler {
 		// }
 	}
 
-	public SetValues(sheetName:string, vs: string[][]) {
+	public SetValues(vs: string[][]) {
 		console.log(vs)
 		if (vs.length === 0) {
 			return
 		}
-		const ts = this.ss.getSheetByName(sheetName)
+		const ts = this.ss.getSheetByName(this.sheetName)
 		const lastRow = ts.getLastRow()
 		const startRow = lastRow+1
 		ts.getRange(startRow, 1, vs.length, vs[0].length ).setValues(vs)
@@ -226,8 +248,8 @@ class SpreadSheetHandler {
 	}
 
 	// to get last ts
-	public LastRowCell(sheetName:string, column: number) {
-		const ts = this.ss.getSheetByName(sheetName)
+	public LastRowCell(column: number) {
+		const ts = this.ss.getSheetByName(this.sheetName)
 		const ll = ts.getLastRow()
 		if (ll === 0) {
 			return ''
@@ -235,6 +257,10 @@ class SpreadSheetHandler {
 		return ts.getRange(ll,column).getValue()
 	}
 
+	public IsOverMaxRow() {
+		const ts = this.ss.getSheetByName(this.sheetName)
+		return ts.getLastRow() > MAX_ROW
+	}
 }
 
 
@@ -362,7 +388,6 @@ class SlackApp {
 	}
 
 	private threadMessages(channelID:string, threadTs:string) {
-		// TODO: limit
 		let options = new Map<string, string>;
 		options['channel'] = channelID
 		options['ts'] =  threadTs
