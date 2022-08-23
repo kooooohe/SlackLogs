@@ -104,7 +104,6 @@ const Run = () => {
 		}
 
 
-		//ss2.Utlity().rename()
 
 		const lastTs = ss2.LastRowCell(TS_COlUMN)
 		const isFirst = lastTs === ''
@@ -226,18 +225,6 @@ class SpreadSheetHandler {
 		if (this.ss.getSheetByName(this.sheetName) === null) {
 			 this.ss.insertSheet(this.sheetName)
 		}
-		
-		 // TODO: delete check
-		// const it = folder.getFilesByName(fileName);
-		// if (it.hasNext()) {
-		// 	const file = it.next();
-		// 	this.ss = SpreadsheetApp.openById(file.getId());
-		// }
-		// else {
-		// 	const ss = SpreadsheetApp.create(fileName);
-		// 	folder.addFile(DriveApp.getFileById(ss.getId()));
-		// 	this.ss = ss
-		// }
 	}
 
 	public SetValues(vs: string[][]) {
