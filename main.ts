@@ -1,4 +1,6 @@
-// TODO セル数をカウントして、シートを増やす sheet_name_${num}的な感じで
+// TODO, get thread after getting
+// headerしか入っていない場合
+
 type Message = {
 	type: string
 	user: string
@@ -18,18 +20,19 @@ type File = {
 }
 
 const MAX_ROW = 7000
+const TS_COlUMN = 7
+const REPLY_COUNT_COlUMN = 5
 
 const Run = () => {
-	const TS_COlUMN = 7
 
 	const header = [
-	/*1*/	'date',
-	/*2*/	'user',
-	/*3*/	'text',
-	/*4*/	'fileURLs',
-	/*5*/	'replyCount',
-	/*6*/	'isThread',
-	/*7*/	'ts' 
+		/*1*/	'date',
+		/*2*/	'user',
+		/*3*/	'text',
+		/*4*/	'fileURLs',
+		/*5*/	'replyCount',
+		/*6*/	'isThread',
+		/*7*/	'ts' 
 	]
 
 	const FOLDER_NAME = "SlackLog";
@@ -122,7 +125,6 @@ const Run = () => {
 
 		ms = downloadFiles(ms,slack,tFolder)
 
-
 		let svs = formatToTwoDimentions(ms, members)
 		if (isFirst) {
 			svs.unshift(header)
@@ -133,6 +135,17 @@ const Run = () => {
 
 		console.log(c)
 		ss2.SetValues(svs)
+
+		const tms = ss2.Threads()
+		for (let tm of tms) {
+			let ms = slack.ThreadMessages(c.id, tm.threadTs, tm.lastTs)
+			ms = downloadFiles(ms,slack,tFolder)
+			let svs = formatToTwoDimentions(ms, members)
+			// it gets one same msg	
+			svs.shift()
+			ss2.Insert(svs, tm.rowNum)
+			
+		}
 	}
 	console.timeEnd('a')
 }
@@ -217,13 +230,15 @@ class FolderHandler {
 class SpreadSheetHandler {
 	private ss: GoogleAppsScript.Spreadsheet.Spreadsheet
 	public sheetName: string
+	private TREAD_TARGET_RANGE = 500
 
-	 // constructor(folder:GoogleAppsScript.Drive.Folder, fileName:string) {
-	 constructor(s: GoogleAppsScript.Spreadsheet.Spreadsheet, sheetName: string) {
-		 this.ss = s
-		 this.sheetName = sheetName
+
+	// constructor(folder:GoogleAppsScript.Drive.Folder, fileName:string) {
+	constructor(s: GoogleAppsScript.Spreadsheet.Spreadsheet, sheetName: string) {
+		this.ss = s
+		this.sheetName = sheetName
 		if (this.ss.getSheetByName(this.sheetName) === null) {
-			 this.ss.insertSheet(this.sheetName)
+			this.ss.insertSheet(this.sheetName)
 		}
 	}
 
@@ -235,7 +250,7 @@ class SpreadSheetHandler {
 		const ts = this.ss.getSheetByName(this.sheetName)
 		const lastRow = ts.getLastRow()
 		const startRow = lastRow+1
-		ts.getRange(startRow, 1, vs.length, vs[0].length ).setValues(vs)
+		ts.getRange(startRow, 1, vs.length, vs[0].length).setNumberFormat('@').setValues(vs)
 	}
 
 	public Utlity() {
@@ -256,6 +271,70 @@ class SpreadSheetHandler {
 		const ts = this.ss.getSheetByName(this.sheetName)
 		return ts.getLastRow() > MAX_ROW
 	}
+
+	public Threads() {
+		const ts = this.ss.getSheetByName(this.sheetName)	
+		const lastRow = ts.getLastRow()
+		let startRow = lastRow
+		if (startRow < this.TREAD_TARGET_RANGE) {
+			startRow = 2 // without header
+		} else {
+			startRow -= this.TREAD_TARGET_RANGE
+			startRow++
+		}
+
+		if (lastRow < startRow) {
+			return []
+		}
+
+		const trs = ts.getRange(startRow,REPLY_COUNT_COlUMN,lastRow-1,3).getValues()
+		//replyCount,isThread,ts
+		console.log(trs)
+		type LastThredMessages = {
+			threadTs: string
+			lastTs: string
+			rowNum: number
+		}
+
+		const REPLY = 0
+		const IS_THREAD = 1
+		const TS = 2
+		let r:LastThredMessages[] = []
+		let p = [0,0,'']
+		let lastThreadTs = ''
+		let cnt = 0
+		for (let t of trs) {
+			if (t[REPLY] != 0) {
+				lastThreadTs = String(t[TS])
+			}
+
+			if (t[IS_THREAD] == 0) {
+				if(p[IS_THREAD] == 1) {
+					const tr:LastThredMessages = {
+						lastTs: String(p[TS]),
+						threadTs: lastThreadTs,
+						rowNum: startRow + cnt
+
+					}
+					r.push(tr)	
+				}
+			}
+
+			p = t
+			cnt++
+		}
+		return r
+	}
+
+	public Insert(vs:string[][], rowNum:number) {
+		if (vs.length === 0) {
+			return
+		}
+		const ts = this.ss.getSheetByName(this.sheetName)
+		ts.insertRowsAfter(rowNum - 1, vs.length)
+		// const lastRow = ts.getLastRow()
+		ts.getRange(rowNum, 1, vs.length, vs[0].length).setNumberFormat('@').setValues(vs)
+	}
 }
 
 
@@ -264,10 +343,9 @@ class SlackApp {
 	private baseURL = "https://slack.com/api/";
 	// "https://slack.com/api/" + path + "?";
 	private REQUEST_MESSAGE_LIMIT = 5
-	private REQUEST_THREAD_LIMIT = 5
+	private REQUEST_THREAD_LIMIT = 3
 	private messageRequesstCount = 0
 	private threadRequesstCount = 0
-
 	constructor (token:string) {
 		this.token = token;
 	}
@@ -333,8 +411,8 @@ class SlackApp {
 			const mstmp:Message[] = data.messages
 			hasNext = !!data.has_more
 			if (mstmp && mstmp.length > 0){
-			  ms = ms.concat(mstmp)
-			  options['oldest'] = mstmp[0].ts
+				ms = ms.concat(mstmp)
+				options['oldest'] = mstmp[0].ts
 			}
 		}
 
@@ -382,13 +460,18 @@ class SlackApp {
 		return data 
 	}
 
-	private threadMessages(channelID:string, threadTs:string) {
+	public ThreadMessages(channelID:string, threadTs:string, oldest:string) {
+		const ms = this.threadMessages(channelID,threadTs,oldest)
+		return ms
+	}
+	private threadMessages(channelID:string, threadTs:string, oldest:string = '') {
 		let options = new Map<string, string>;
 		options['channel'] = channelID
 		options['ts'] =  threadTs
+		options['oldest'] = oldest
 		let hasNext = true
-			console.log('get thred func1')
-			console.log(channelID)
+		console.log('get thred func1')
+		console.log(channelID)
 
 		let ms: Message[] = []
 		while (hasNext && this.canThtradRequest()) {
@@ -399,12 +482,12 @@ class SlackApp {
 			console.log(mstmp)
 			hasNext = !!data.has_more
 			if (mstmp && mstmp.length > 0){
-			  ms = ms.concat(mstmp)
-			  options['oldest'] = mstmp[0].ts
+				ms = ms.concat(mstmp)
+				options['oldest'] = mstmp[0].ts
 			}
 		}
-			console.log('get thred func3')
-			console.log(ms)
+		console.log('get thred func3')
+		console.log(ms)
 
 		return ms
 	}
