@@ -1,6 +1,3 @@
-// TODO, get thread after getting
-// headerしか入っていない場合
-
 type Message = {
 	type: string
 	user: string
@@ -108,8 +105,7 @@ const Run = () => {
 
 
 
-		const lastTs = ss2.LastRowCell(TS_COlUMN)
-		const isFirst = lastTs === ''
+		const lastTs = ss2.LastRowCell(TS_COlUMN, 1)
 
 		let ms = slack.Messages(c.id, lastTs)
 
@@ -125,12 +121,16 @@ const Run = () => {
 
 		ms = downloadFiles(ms,slack,tFolder)
 
+		const isFirst = ss2.IsNothing()
+
 		let svs = formatToTwoDimentions(ms, members)
 		if (isFirst) {
 			svs.unshift(header)
 		} else {
 			// it gets one same msg	
-			svs.shift()
+			if (lastTs) {
+			  svs.shift()
+			}
 		}
 
 		console.log(c)
@@ -258,13 +258,19 @@ class SpreadSheetHandler {
 	}
 
 	// to get last ts
-	public LastRowCell(column: number) {
+	public LastRowCell(column: number, ignore:number = 0) {
 		const ts = this.ss.getSheetByName(this.sheetName)
 		const ll = ts.getLastRow()
-		if (ll === 0) {
+		if (ll <= ignore) {
 			return ''
 		}
 		return ts.getRange(ll,column).getValue()
+	}
+
+	public IsNothing() {
+		const ts = this.ss.getSheetByName(this.sheetName)
+		const ll = ts.getLastRow()
+		return ll === 0
 	}
 
 	public IsOverMaxRow() {
