@@ -154,7 +154,14 @@ const downloadFiles = (ms: Message[], slack: SlackApp, tFolder: GoogleAppsScript
 	for (let m of ms) {
 		if (m.files) {
 			for (let f of m.files) {
-				const data = slack.Download(f.url_private_download)
+				let data:any
+				try {
+					data = slack.Download(f.url_private_download)
+				} catch(error) {
+					// for deleteed file
+					console.log(error)
+					continue
+				}
 				const fname = f.name + '_' + f.name
 				const b = data.getBlob().setName(fname)
 				const fit = tFolder.getFilesByName(fname)
@@ -517,6 +524,7 @@ class SlackApp {
 			const data = UrlFetchApp.fetch(url, options);
 		} catch(error) {
 			console.log(error)
+			throw(error)
 			// ignore if the size is too big
 		}
 		return data;
