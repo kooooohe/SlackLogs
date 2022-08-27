@@ -392,6 +392,15 @@ class SlackApp {
 		const data = this.request('users.list', {});
 		let members = new Map<string,string>
 		for (let m of data.members) {
+			if(m.profile?.display_name) {
+				members[m.id] = m.profile.display_name;
+				continue;
+			}
+
+			if(m.real_name) {
+				members[m.id] = m.real_name;
+				continue;
+			}
 			members[m.id] = m.name;
 		}
 		return members;
